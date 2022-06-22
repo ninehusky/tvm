@@ -2665,9 +2665,9 @@ class PyTorchOpConverter:
             # see https://github.com/pytorch/pytorch/blob/70c8daf43946b53af6493d058899ef952d27d339
             # /aten/src/ATen/native/RNN.cpp#L1054
             if dropout_p != 0 and i < layers_num - 1:
-                # for input in input_seqs:
-                #     input = _op.dropout(input, dropout_p)
-                raise NotImplementedError("Dropout for LSTM has not been supported yet!")
+                for input in input_seqs:
+                    input = tvm.relay.nn.dropout(input, dropout_p)
+                # raise NotImplementedError("Dropout for LSTM has not been supported yet!")
         final_hiddens = []
         if bidirectional:
             for output_hidden in output_hiddens:
@@ -3635,6 +3635,8 @@ def _run_jit_passes(graph, enable_lower_all_tuples=True):
         # It is the same as _jit_pass_inline, except that it has some special
         # case behaviors for some ops such as aten::__interpolate()
         torch._C._jit_pass_onnx_function_substitution(graph)
+        torch._C._jit_pass_onnx_prepare_inplace_ops_for_onnx(graph)
+        torch._C._jit_pass_dce_allow_deleting_nodes_with_side_effects(graph)
     else:
         torch._C._jit_pass_inline(graph)
 
@@ -3754,6 +3756,8 @@ def _get_constant(node):
             return node.s(attr_name)
         elif ty == "FunctionType":
             return None
+        elif ty == "ListType":
+            return _wrap_const(np.asarray(node.output().toIValue()))
         else:
             raise NotImplementedError("Unsupported type: %s" % ty)
     else:
